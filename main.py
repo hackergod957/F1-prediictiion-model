@@ -68,5 +68,9 @@ team_race_avg["teamRolling"] = (
 
 Data = pd.merge(Data, team_race_avg[['raceId', 'constructorId', 'teamRolling']], on=['raceId', 'constructorId'], how="left")
 
+print(Data.shape[0])
 print(Data[Data["year"] >= 2014].shape[0])
 print(list(Data))
+
+X = Data.drop(columns=['positionOrder'])
+y = Data['positionOrder']
