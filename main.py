@@ -38,3 +38,35 @@ Data["q2_SEC"] = pd.to_numeric(Data["q2_SEC"].str[0]) * 60 + pd.to_numeric(Data[
 
 Data["q3_SEC"] = (Data["q3"]).str.split(":")
 Data["q3_SEC"] = pd.to_numeric(Data["q3_SEC"].str[0] ) * 60 + pd.to_numeric(Data["q3_SEC"].str[1])
+
+Data = Data.sort_values(by="date")
+Data.to_csv('2014Onwards.csv',index=False)
+
+Data["prev_position"] = Data.groupby("driverId")["positionOrder"].shift(1)
+
+Data["avg_pos_prev_5"] = (
+    Data.groupby("driverId")["prev_position"]
+    .rolling(window=5, min_periods=5)
+    .mean()
+    .reset_index(level=0, drop=True)
+)
+
+
+team_race_avg = Data.groupby(["constructorId", "raceId" , 'date'])["positionOrder"].mean().reset_index()
+team_race_avg.rename(columns={"positionOrder": "Avg_Position"}, inplace=True)
+
+team_race_avg = team_race_avg.sort_values(by=['date'])
+
+team_race_avg["teamRolling"] = (
+    team_race_avg.groupby("constructorId")["Avg_Position"]
+    .shift(1)
+    .groupby(team_race_avg["constructorId"])
+    .rolling(window=5, min_periods=5)
+    .mean()
+    .reset_index(level=0, drop=True)
+)
+
+Data = pd.merge(Data, team_race_avg[['raceId', 'constructorId', 'teamRolling']], on=['raceId', 'constructorId'], how="left")
+
+print(Data[Data["year"] >= 2014].shape[0])
+print(list(Data))
