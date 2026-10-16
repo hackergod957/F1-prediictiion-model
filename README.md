@@ -84,13 +84,37 @@ python3 -m http.server 8080 --directory public
 
 Open http://localhost:8080. Serve the files over HTTP so the browser can load `model.json`.
 
+## Rebuild from source
+
+The repository includes the input CSV files, frontend source, and model exporter. Use Python 3.14 (the version used for the verified rebuild) and run these commands from the repository root:
+
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python frontend/export_model.py
+.venv/bin/python prepare_vercel.py
+.venv/bin/python -m http.server 8080 --directory public
+```
+
+Open http://localhost:8080. The exporter retrains the 20-tree forest from `races.csv`, `results.csv`, and `qualifying.csv`, evaluates it on 2025 pairs, and writes `frontend/dist/model.json`. The preparation script copies the model and both HTML pages into `public/`.
+
+To change the interface, edit `frontend/dist/index.html` or `frontend/dist/predictor.html`, then run `prepare_vercel.py` again. The source and exported files are included as ordinary repository files; no additional repository or account is required.
+
+To run the original learning implementation separately:
+
+```sh
+.venv/bin/python algorithm.py
+```
+
+Its exhaustive split search is slower than the browser-model exporter's cumulative-count implementation. Both use the forest settings above, but numerical tie handling can produce different trees and results.
+
 ## Project structure
 
 | File | Purpose |
 | --- | --- |
 | `features.py` | Prepares features and chronological training/test splits |
 | `algorithm.py` | Learning implementation of the random forest |
-| `frontend/export_model.py` | Builds the optimized browser model when the frontend checkout is available |
+| `frontend/export_model.py` | Trains and exports the optimized browser forest |
 | `public/index.html` | Home page |
 | `public/predictor.html` | Comparison form and browser predictions |
 | `public/model.json` | Exported forest, training medians, examples, and evaluation metrics |
