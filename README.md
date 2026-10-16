@@ -1,56 +1,41 @@
 # F1 Predictor
 
-A minimal Formula 1 head-to-head prediction website backed by a random forest. Enter pre-race feature differences for two drivers to estimate which driver finishes ahead.
+[Open the live predictor](https://f1-eight-theta.vercel.app/)
 
-The website includes a home page, a comparison form, five historical test examples, and the first tree's decision path. Predictions run entirely in the browser using an exported model; hosting needs no Python backend, API keys, cookies, or sign-in.
+Compare two Formula 1 drivers using a random forest trained on historical race results. The app estimates the probability that Driver A finishes ahead of Driver B from their grid positions, qualifying performance, and recent form.
 
-## Run locally
+## How to use
 
-Python 3 is enough to serve the included website:
+1. Open the [website](https://f1-eight-theta.vercel.app/) and select **Compare drivers**.
+2. Select **Next example** to load one of five historical comparisons, or enter your own feature values.
+3. Enter every difference as **Driver A minus Driver B**. For example, if A starts 8th and B starts 3rd, the grid difference is `8 - 3 = 5`. The best grid position is `3`.
+4. Leave unknown values blank. The model uses training medians and available missing-value indicators.
+5. Select **Predict result** to see both drivers' probabilities.
+6. Expand **First tree’s decision path** to see the questions one tree used. The final prediction averages all 20 trees.
 
-```sh
-python3 -m http.server 8080 --directory public
-```
+A result of **Driver A: 70%** means the forest estimates a 70% chance that A finishes ahead of B. It does not mean A has a 70% chance of winning the race. The two probabilities add up to 100%.
 
-Open http://localhost:8080. The comparison tool is at http://localhost:8080/predictor.html. Select **Next example**, then **Predict result** to try a real historical pair.
+Use **Next example** again to try another comparison. The example message shows which driver actually finished ahead. Select **F1 / PREDICTOR** to return to the home page.
 
-Serve over HTTP rather than opening the HTML files directly: the app fetches `model.json`.
+## How it works
 
-## Deploy to Vercel
+### Preparing the data
 
-The root `vercel.json` configures a static deployment of `public/`. The model is already exported; no installation or build step is required.
+`features.py` combines race, result, and qualifying CSV files. It converts qualifying times into seconds, calculates each driver's session gap to the fastest lap, and builds driver and constructor form from the previous five races. Form features are shifted so the current race result is excluded.
 
-1. Push this repository, including `public/` and `vercel.json`, to your Git provider.
-2. In Vercel, select **Add New → Project** and import the repository.
-3. Keep the **Root Directory** at the repository root. The framework is **Other**, the output directory is **public**, and install/build commands are empty, as configured in `vercel.json`.
-4. Deploy and open the production `https://…vercel.app` URL returned by Vercel.
+Drivers from the same race are paired. Their features are subtracted to describe a head-to-head comparison, and the label records which driver finished ahead. Pair orientation is randomly flipped for a subset of rows, with the label flipped too. Pairs where both drivers have retirement status `R` are excluded.
 
-Alternatively, with Node.js and access to your Vercel account:
+The data is split chronologically: 2014–2024 for training and 2025 for evaluation. Missing values are filled using training medians. Missing-value flags are included for columns that contain missing values in training.
 
-```sh
-npx vercel login
-npx vercel --prod
-```
+### Growing the forest
 
-Run these from the repository root. No Vercel deployment has been created by these configuration files alone.
+Each of the 20 trees receives a bootstrap sample: training rows drawn with replacement. At every node, the tree considers a random subset of features and selects the feature and threshold with the largest reduction in weighted Gini impurity.
 
-### Access from private/incognito windows
+A branch stops when it reaches depth 5, contains fewer than 10 rows, has only one label, or has no improving split. Each leaf stores the proportion of its rows with label 1. The forest prediction is the average of the 20 reached leaf probabilities.
 
-The website's links and model requests are relative to the current host. They do not depend on a ChatGPT session, Vercel login, or browser storage.
+### Predicting in the browser
 
-In Vercel **Project Settings → Deployment Protection**, ensure the production deployment is accessible to unauthenticated visitors. Preview URLs may have different protection settings; share the production domain. Access protection is an account setting, not something this static `vercel.json` disables.
-
-After deployment, open a new private/incognito window without signing in and verify:
-
-- `/` opens the home page.
-- **Compare drivers** opens `/predictor.html`.
-- **Next example → Predict result** produces probabilities.
-- The **F1 / PREDICTOR** link returns home.
-- `/model.json` opens without an authentication prompt.
-
-A website cannot force a link to open an incognito window. Open that window using the browser's menu. The earlier ChatGPT Sites URL is a separate private deployment and does not become public when this project is deployed to Vercel.
-
-References: [Vercel static configuration](https://vercel.com/docs/project-configuration/vercel-json), [deployment protection](https://vercel.com/docs/deployment-protection).
+The website loads the exported forest from `model.json`. JavaScript follows each tree's conditions and averages the results locally. Predictions require no account, Python server, or live API request.
 
 ## Model
 
@@ -89,38 +74,27 @@ All differences are **Driver A minus Driver B**.
 
 Leave unknown inputs blank. The frontend fills them with training medians and sets missing indicators where the training schema includes them. Historical examples retain their original missingness. Driver names and current race feeds are not included.
 
-## Training and refreshing the website
+## Run locally
 
-The existing Python workflow uses NumPy, pandas, and matplotlib:
-
-```sh
-python3 -m venv .venv
-.venv/bin/python -m pip install numpy pandas matplotlib
-.venv/bin/python algorithm.py
-```
-
-Run training from the repository root, where `races.csv`, `results.csv`, and `qualifying.csv` are located. The learning implementation's exhaustive threshold search can be slow.
-
-With the frontend source checkout available, rebuild the optimized browser model and refresh the Vercel files:
+To use the included website locally, run this from the repository root:
 
 ```sh
-.venv/bin/python frontend/export_model.py
-.venv/bin/python prepare_vercel.py
+python3 -m http.server 8080 --directory public
 ```
 
-Commit the refreshed `public/` files and push to trigger a Vercel redeployment. Vercel does not retrain the model.
+Open http://localhost:8080. Serve the files over HTTP so the browser can load `model.json`.
 
-## Files
+## Project structure
 
-```text
-algorithm.py               Learning implementation of the random forest
-features.py                CSV loading, preprocessing, and chronological split
-frontend/                  Separate frontend Git checkout, when available
-prepare_vercel.py          Copies the static frontend export into public/
-public/index.html          Deployable home page
-public/predictor.html      Browser prediction interface
-public/model.json          Exported forest, medians, examples, and metrics
-vercel.json                Static Vercel deployment configuration
-```
+| File | Purpose |
+| --- | --- |
+| `features.py` | Prepares features and chronological training/test splits |
+| `algorithm.py` | Learning implementation of the random forest |
+| `frontend/export_model.py` | Builds the optimized browser model when the frontend checkout is available |
+| `public/index.html` | Home page |
+| `public/predictor.html` | Comparison form and browser predictions |
+| `public/model.json` | Exported forest, training medians, examples, and evaluation metrics |
 
-`frontend/` is currently recorded as a Git link in the parent repository. A fresh clone may not contain its files. The ordinary tracked files in `public/` make Vercel deployment independent of that nested checkout. Keep `public/` committed; restoring the frontend checkout is only needed to regenerate the export.
+## Limitations
+
+The app uses historical data and manually entered features; it does not fetch current drivers, qualifying sessions, or race updates. Its accuracy measures driver-pair classification on the 2025 holdout set, not race-winner accuracy. Probabilities are not calibrated and should be treated as model estimates.
