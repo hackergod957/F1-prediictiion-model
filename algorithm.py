@@ -96,3 +96,21 @@ def buildTree(X:pd.DataFrame,labels:pd.Series ,  depth=0 , max_depth=5, min_samp
     return node
 
     
+def predictProbability(row, tree):
+    while "feature" in tree:
+        if row[tree["feature"]] <= tree["threshold"]:
+            tree = tree["left"]
+        else:
+            tree = tree["right"]
+
+    return tree["probability"]
+
+
+tree = buildTree(X_train, y_train)
+
+probabilities = X_test.apply(
+    lambda row: predictProbability(row, tree),
+    axis=1
+)
+
+predictions = (probabilities >= 0.5).astype(int)
