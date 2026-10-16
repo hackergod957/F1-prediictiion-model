@@ -45,3 +45,20 @@ def getThreshold(feature : pd.Series,labels : pd.Series):
 
 
     return threshold , bestDrop
+
+def getBestSplit(X: pd.DataFrame, labels: pd.Series ):
+    feature = None
+    threshold = None
+    bestDrop = 0
+
+    for column in X.columns:
+
+        thresholds  , drop = getThreshold(X[column],labels)
+
+        if drop > bestDrop:
+            feature = column
+            threshold = thresholds
+            bestDrop = drop
+
+    return feature,threshold,bestDrop
+
