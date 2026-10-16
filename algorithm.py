@@ -5,8 +5,8 @@ import numpy as np
 X_train,X_test,y_train,y_test = features()
 
 def impurity(labels : pd.Series):
-    counts = labels.value_counts()
-    probabilities = [(count / sum(counts)) * 100 for count in counts]
+    _, counts = np.unique(labels, return_counts=True)
+    probabilities = [(count / sum(counts)) for count in counts]
     gini = 1 - sum(p**2 for p in probabilities)
     return gini
 
@@ -46,12 +46,15 @@ def getThreshold(feature : pd.Series,labels : pd.Series):
 
     return threshold , bestDrop
 
-def getBestSplit(X: pd.DataFrame, labels: pd.Series ):
+def getBestSplit(X: pd.DataFrame, labels: pd.Series , rng):
     feature = None
     threshold = None
     bestDrop = 0
 
-    for column in X.columns:
+    count = max(1, int(np.sqrt(X.shape[1])))
+    columns = rng.choice(X.columns, size=count, replace=False)
+
+    for column in columns:
 
         thresholds  , drop = getThreshold(X[column],labels)
 
@@ -63,20 +66,22 @@ def getBestSplit(X: pd.DataFrame, labels: pd.Series ):
     return feature,threshold,bestDrop
 
 
-def buildTree(X:pd.DataFrame,labels:pd.Series ,  depth=0 , max_depth=5, min_samples_split=10 ):
+def buildTree( X:pd.DataFrame,labels:pd.Series , rng, depth=0 , max_depth=5, min_samples_split=10 ):
     node = {"probability": float(labels.mean())}
 
-    feature , drop , threshold = getBestSplit(X,labels)
 
     if(
         depth >= max_depth
         or len(labels) < min_samples_split
-        or labels.nunique <= 1
+        or labels.nunique() <= 1
     ):
         return node 
     
+    feature ,  threshold , drop = getBestSplit(X,labels,rng)
+    
     if feature is None:
         return node
+
 
     left = X[feature] <= threshold
     right = ~left
@@ -85,9 +90,10 @@ def buildTree(X:pd.DataFrame,labels:pd.Series ,  depth=0 , max_depth=5, min_samp
         {
 
             "feature" : feature,
+            "threshold": threshold,
             "drop" : drop,
-            "left" : buildTree(X.loc[left] , labels.loc[left] , depth + 1, max_depth, min_samples_split ),
-            "right": buildTree(X.loc[right] , labels.loc[right],depth + 1, max_depth, min_samples_split )
+            "left" : buildTree(X.loc[left] , labels.loc[left] , rng ,depth + 1, max_depth, min_samples_split  ),
+            "right": buildTree(X.loc[right] , labels.loc[right], rng ,depth + 1, max_depth, min_samples_split  )
 
         }
 
@@ -106,11 +112,40 @@ def predictProbability(row, tree):
     return tree["probability"]
 
 
-tree = buildTree(X_train, y_train)
+def buildForest(
+    X, labels, n_trees=20,
+    max_depth=5, min_samples_split=10, seed=42
+):
+    rng = np.random.default_rng(seed)
+    forest = []
+
+    for _ in range(n_trees):
+        indices = rng.choice(len(X), size=len(X), replace=True)
+
+        sample_X = X.iloc[indices].reset_index(drop=True)
+        sample_y = labels.iloc[indices].reset_index(drop=True)
+
+        tree = buildTree(
+            sample_X, sample_y, rng,
+            max_depth=max_depth,
+            min_samples_split=min_samples_split
+        )
+        forest.append(tree)
+
+    return forest
+
+
+forest = buildForest(X_train, y_train)
 
 probabilities = X_test.apply(
-    lambda row: predictProbability(row, tree),
+    lambda row: np.mean([
+        predictProbability(row, tree)
+        for tree in forest
+    ]),
     axis=1
 )
 
 predictions = (probabilities >= 0.5).astype(int)
+accuracy = (predictions == y_test).mean()
+
+print(f"Accuracy: {accuracy:.2%}")
