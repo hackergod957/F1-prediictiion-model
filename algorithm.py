@@ -62,3 +62,37 @@ def getBestSplit(X: pd.DataFrame, labels: pd.Series ):
 
     return feature,threshold,bestDrop
 
+
+def buildTree(X:pd.DataFrame,labels:pd.Series ,  depth=0 , max_depth=5, min_samples_split=10 ):
+    node = {"probability": float(labels.mean())}
+
+    feature , drop , threshold = getBestSplit(X,labels)
+
+    if(
+        depth >= max_depth
+        or len(labels) < min_samples_split
+        or labels.nunique <= 1
+    ):
+        return node 
+    
+    if feature is None:
+        return node
+
+    left = X[feature] <= threshold
+    right = ~left
+
+    node.update(
+        {
+
+            "feature" : feature,
+            "drop" : drop,
+            "left" : buildTree(X.loc[left] , labels.loc[left] , depth + 1, max_depth, min_samples_split ),
+            "right": buildTree(X.loc[right] , labels.loc[right],depth + 1, max_depth, min_samples_split )
+
+        }
+
+    )
+
+    return node
+
+    
